@@ -2,6 +2,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 session_start();
+
 include(__DIR__ . "/../../config/config.php"); // DB connection
 
 $error = "";
@@ -9,23 +10,34 @@ $error = "";
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
-    $role     = $_POST['role'];
+    $role     = trim($_POST['role']);
 
-    if(empty($role)){
+    if (empty($role)) {
         $error = "Please select role!";
     } else {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE username = ? AND role = ? LIMIT 1");
+        // 👇 Query with username and role check
+        $stmt = $conn->prepare("SELECT * FROM users WHERE username = ? AND role = ?");
         $stmt->bind_param("ss", $username, $role);
         $stmt->execute();
         $result = $stmt->get_result();
 
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
+
+            // 👇 Password verify
             if (password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['user_id']  = $user['id'];
                 $_SESSION['username'] = $user['username'];
-                $_SESSION['role'] = $user['role'];
-                header("Location: ../dashboard.php"); // redirect to dashboard
+                $_SESSION['role']     = $user['role'];
+
+                // ✅ Role-wise redirection
+                if ($user['role'] === 'admin') {
+                    header("Location: ../admin/admin_dashboard.php");
+                } elseif ($user['role'] === 'faculty') {
+                    header("Location: ../faculty/faculty_dashboard.php");
+                } elseif ($user['role'] === 'student') {
+                    header("Location: ../student/student_dashboard.php");
+                }
                 exit();
             } else {
                 $error = "Invalid password!";
