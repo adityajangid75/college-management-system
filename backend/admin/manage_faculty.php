@@ -123,9 +123,9 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 <a href="admin_dashboard.php">🏠 Dashboard</a>
 <a href="manage_users.php">👤 Manage Users</a>
 <a href="manage_students.php">🎓 Manage Students</a>
-<a href="#">📚 Courses</a>
-<a href="#">📊 Reports</a>
-<a href="#">⚙️ Settings</a>
+<a href="manage_course.php">📚 Courses</a>
+<a href="reports.php">📊 Reports</a>
+<a href="settings.php">⚙️ Settings</a>
 <a href="../auth/logout.php" class="logout">🚪 Logout</a>
 </div>
 
