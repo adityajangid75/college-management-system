@@ -21,8 +21,8 @@ $facultyQuery = $conn->query("SELECT id, name FROM faculty ORDER BY name ASC");
 if(isset($_POST['save_course'])){
     $id = $_POST['id'] ?? '';
     $name = $conn->real_escape_string(trim($_POST['name'] ?? ''));
-    $code = $conn->real_escape_string(trim($_POST['code'] ?? ''));
-    $description = $conn->real_escape_string(trim($_POST['description'] ?? ''));
+    $code = strtoupper($conn->real_escape_string(trim($_POST['code'] ?? ''))); // always uppercase
+    $description = $conn->real_escape_string(substr(trim($_POST['description'] ?? ''),0,500)); // max 500 chars
     $faculty_id = intval($_POST['faculty_id'] ?? 0);
 
     if($name === '' || $code === '' || $faculty_id === 0){
@@ -59,15 +59,45 @@ if(isset($_GET['edit'])){
     }
 }
 
-// Delete Course
+// Delete Course with error handling
 if(isset($_GET['delete'])){
     $id = intval($_GET['delete']);
-    $conn->query("DELETE FROM courses WHERE id=$id");
-    $success = "Course deleted successfully!";
+    try{
+        $conn->query("DELETE FROM courses WHERE id=$id");
+        if($conn->affected_rows>0){
+            $success = "Course deleted successfully!";
+        } else {
+            $error = "Course not found or already deleted.";
+        }
+    }catch(Exception $e){
+        $error = "Unable to delete course. It might be linked with other records!";
+    }
 }
 
-// Fetch all courses
-$coursesQuery = $conn->query("SELECT c.*, f.name as faculty_name FROM courses c LEFT JOIN faculty f ON c.faculty_id=f.id ORDER BY c.id DESC");
+// --- Search + Pagination ---
+$search = $conn->real_escape_string(trim($_GET['search'] ?? ''));
+$where = "";
+if($search !== ''){
+    $where = "WHERE c.name LIKE '%$search%' OR c.code LIKE '%$search%' OR f.name LIKE '%$search%'";
+}
+
+// Pagination
+$limit = 10;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page-1)*$limit;
+
+// Count total
+$countRes = $conn->query("SELECT COUNT(*) as total FROM courses c LEFT JOIN faculty f ON c.faculty_id=f.id $where");
+$totalRows = $countRes->fetch_assoc()['total'];
+$totalPages = ceil($totalRows/$limit);
+
+// Fetch courses with search + pagination
+$coursesQuery = $conn->query("SELECT c.*, f.name as faculty_name 
+    FROM courses c 
+    LEFT JOIN faculty f ON c.faculty_id=f.id 
+    $where 
+    ORDER BY c.id DESC 
+    LIMIT $limit OFFSET $offset");
 ?>
 
 <!DOCTYPE html>
@@ -104,11 +134,12 @@ button{padding:10px 20px;background:#2c3e50;color:#fff;border:none;border-radius
 button:hover{background:#34495e}
 
 /* Table */
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-th, td{border:1px solid #ddd;padding:8px;text-align:left;word-wrap:break-word}
+.table-container{width:100%;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:800px}
+th, td{border:1px solid #ddd;padding:8px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 th{background:#2c3e50;color:#fff}
 td:last-child{width:150px;display:flex;gap:5px}
-.btn{flex:1;text-align:center;text-decoration:none;padding:5px 0;border-radius:4px;color:#fff}
+.btn{flex:1;text-align:center;text-decoration:none;padding:6px 0;border-radius:6px;color:#fff;font-size:14px}
 .edit{background:#2980b9}
 .edit:hover{background:#3498db}
 .delete{background:#c0392b}
@@ -117,6 +148,18 @@ td:last-child{width:150px;display:flex;gap:5px}
 /* Messages */
 .success{color:green;margin-bottom:10px}
 .error{color:red;margin-bottom:10px}
+
+/* Search */
+.search-bar{margin-bottom:15px;display:flex;gap:10px}
+.search-bar input{flex:1;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:15px}
+.search-bar button{padding:8px 15px;background:#27ae60;border:none;color:#fff;border-radius:4px;cursor:pointer}
+.search-bar button:hover{background:#2ecc71}
+
+/* Pagination */
+.pagination{margin-top:15px;display:flex;gap:8px;flex-wrap:wrap}
+.pagination a{padding:6px 12px;background:#2c3e50;color:#fff;text-decoration:none;border-radius:4px;font-size:14px}
+.pagination a.active{background:#27ae60}
+.pagination a:hover{background:#34495e}
 
 /* === Responsive === */
 @media (max-width:1366px){.sidebar{width:220px}.main-content{margin-left:220px}.header h1{font-size:22px}}
@@ -173,7 +216,7 @@ td:last-child{width:150px;display:flex;gap:5px}
 </div>
 <div class="form-group">
 <label>Description</label>
-<textarea name="description" required><?= htmlspecialchars($course['description']) ?></textarea>
+<textarea name="description" maxlength="500" required><?= htmlspecialchars($course['description']) ?></textarea>
 </div>
 <div class="form-group">
 <label>Assigned Faculty</label>
@@ -194,26 +237,48 @@ while($f = $facultyQuery->fetch_assoc()):
 
 <div class="content">
 <h2>All Courses</h2>
+
+<!-- Search bar -->
+<form method="GET" class="search-bar">
+    <input type="text" name="search" placeholder="Search by name, code or faculty..." value="<?=htmlspecialchars($search)?>">
+    <button type="submit">Search</button>
+</form>
+
+<div class="table-container">
 <table>
 <tr><th>ID</th><th>Name</th><th>Code</th><th>Description</th><th>Faculty</th><th>Actions</th></tr>
+<?php if($coursesQuery->num_rows>0): ?>
 <?php while($c = $coursesQuery->fetch_assoc()): ?>
 <tr>
 <td><?=$c['id']?></td>
-<td><?=htmlspecialchars($c['name'])?></td>
-<td><?=htmlspecialchars($c['code'])?></td>
-<td><?=htmlspecialchars($c['description'])?></td>
-<td><?=htmlspecialchars($c['faculty_name'])?></td>
+<td><?=htmlspecialchars($c['name'] ?? '')?></td>
+<td><?=htmlspecialchars($c['code'] ?? '')?></td>
+<td><?=htmlspecialchars($c['description'] ?? '')?></td>
+<td><?=htmlspecialchars($c['faculty_name'] ?? '')?></td>
 <td>
 <a href="?edit=<?=$c['id']?>" class="btn edit">Edit</a>
 <a href="?delete=<?=$c['id']?>" class="btn delete" onclick="return confirm('Are you sure you want to delete this course?')">Delete</a>
 </td>
 </tr>
 <?php endwhile; ?>
+<?php else: ?>
+<tr><td colspan="6">No courses found.</td></tr>
+<?php endif; ?>
 </table>
 </div>
 
+<!-- Pagination -->
+<?php if($totalPages>1): ?>
+<div class="pagination">
+<?php for($i=1;$i<=$totalPages;$i++): ?>
+<a href="?page=<?=$i?>&search=<?=urlencode($search)?>" class="<?=$i==$page?'active':''?>"><?=$i?></a>
+<?php endfor; ?>
+</div>
+<?php endif; ?>
+
+</div>
+
 <script>
-// Mobile sidebar toggle
 function toggleSidebar(){
     document.getElementById("sidebar").classList.toggle("active");
 }

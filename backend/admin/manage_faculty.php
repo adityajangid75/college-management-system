@@ -9,47 +9,80 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
 
 // Add Faculty
 if(isset($_POST['addFaculty'])){
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $phone = $_POST['phone'];
-    $department = $_POST['department'];
-    $designation = $_POST['designation'];
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $phone = trim($_POST['phone']);
+    $department = trim($_POST['department']);
+    $designation = trim($_POST['designation']);
     $joining_date = $_POST['joining_date'];
-    $address = $_POST['address'];
+    $address = trim($_POST['address']);
     $gender = $_POST['gender'];
     $status = $_POST['status'];
 
-    $stmt = $conn->prepare("INSERT INTO faculty (name,email,phone,department,designation,joining_date,address,gender,status) VALUES (?,?,?,?,?,?,?,?,?)");
-    $stmt->bind_param("sssssssss",$name,$email,$phone,$department,$designation,$joining_date,$address,$gender,$status);
-    $stmt->execute();
-    $stmt->close();
-    header("Location: manage_faculty.php");
-    exit();
+    // Backend validation
+    if(empty($name) || empty($email) || empty($department)){
+        echo "<script>alert('Name, Email, and Department are required');</script>";
+    } else {
+        $stmt = $conn->prepare("INSERT INTO faculty (name,email,phone,department,designation,joining_date,address,gender,status) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("sssssssss",$name,$email,$phone,$department,$designation,$joining_date,$address,$gender,$status);
+        $stmt->execute();
+        $stmt->close();
+        header("Location: manage_faculty.php");
+        exit();
+    }
 }
 
 // Update Faculty
 if(isset($_POST['editFaculty'])){
     $id = $_POST['id'];
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $phone = $_POST['phone'];
-    $department = $_POST['department'];
-    $designation = $_POST['designation'];
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $phone = trim($_POST['phone']);
+    $department = trim($_POST['department']);
+    $designation = trim($_POST['designation']);
     $joining_date = $_POST['joining_date'];
-    $address = $_POST['address'];
+    $address = trim($_POST['address']);
     $gender = $_POST['gender'];
     $status = $_POST['status'];
 
-    $stmt = $conn->prepare("UPDATE faculty SET name=?, email=?, phone=?, department=?, designation=?, joining_date=?, address=?, gender=?, status=? WHERE id=?");
-    $stmt->bind_param("sssssssssi",$name,$email,$phone,$department,$designation,$joining_date,$address,$gender,$status,$id);
-    $stmt->execute();
-    $stmt->close();
+    if(empty($name) || empty($email) || empty($department)){
+        echo "<script>alert('Name, Email, and Department are required');</script>";
+    } else {
+        $stmt = $conn->prepare("UPDATE faculty SET name=?, email=?, phone=?, department=?, designation=?, joining_date=?, address=?, gender=?, status=? WHERE id=?");
+        $stmt->bind_param("sssssssssi",$name,$email,$phone,$department,$designation,$joining_date,$address,$gender,$status,$id);
+        $stmt->execute();
+        $stmt->close();
+        header("Location: manage_faculty.php");
+        exit();
+    }
+}
+
+// Toggle Status via GET
+if(isset($_GET['toggle_status'])){
+    $id = $_GET['toggle_status'];
+    $facultyRow = $conn->query("SELECT status FROM faculty WHERE id='$id'")->fetch_assoc();
+    $newStatus = ($facultyRow['status']=='Active')?'Inactive':'Active';
+    $conn->query("UPDATE faculty SET status='$newStatus' WHERE id='$id'");
     header("Location: manage_faculty.php");
     exit();
 }
 
-// Fetch all faculty
-$faculty = $conn->query("SELECT * FROM faculty ORDER BY id DESC");
+// Pagination
+$limit = 10;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$start = ($page-1)*$limit;
+
+// Search
+$search = '';
+if(isset($_GET['search'])){
+    $search = $conn->real_escape_string($_GET['search']);
+    $faculty = $conn->query("SELECT * FROM faculty WHERE name LIKE '%$search%' OR department LIKE '%$search%' ORDER BY id DESC LIMIT $start,$limit");
+    $totalResult = $conn->query("SELECT COUNT(*) as total FROM faculty WHERE name LIKE '%$search%' OR department LIKE '%$search%'")->fetch_assoc()['total'];
+} else {
+    $faculty = $conn->query("SELECT * FROM faculty ORDER BY id DESC LIMIT $start,$limit");
+    $totalResult = $conn->query("SELECT COUNT(*) as total FROM faculty")->fetch_assoc()['total'];
+}
+$totalPages = ceil($totalResult/$limit);
 ?>
 
 <!DOCTYPE html>
@@ -79,7 +112,7 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 .content table th{background:#34495e;color:white;}
 .btn{padding:6px 12px;border:none;border-radius:4px;cursor:pointer;display:inline-block;margin-right:5px;}
 .btn-add{background:#27ae60;color:white;margin-bottom:10px;}
-.btn-edit, .btn-delete {
+.btn-edit, .btn-delete, .btn-toggle {
     padding: 6px 14px;
     border: none;
     border-radius: 5px;
@@ -91,14 +124,10 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
     color: white;
     text-decoration: none;
 }
+.btn-edit { background: #3498db; }
+.btn-delete { background: #e74c3c; }
+.btn-toggle { background: #f39c12; }
 
-.btn-edit {
-    background: #3498db; /* blue */
-}
-
-.btn-delete {
-    background: #e74c3c; /* red */
-}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;overflow-y:auto;padding:20px;}
 .modal-content{background:white;padding:20px;border-radius:8px;width:90%;max-width:500px;position:relative;max-height:90vh;overflow-y:auto;}
 .modal-content h3{margin-bottom:15px;color:#2c3e50;}
@@ -110,11 +139,16 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 @media(max-width:1366px){.sidebar{width:220px;}.main-content{margin-left:220px;}}
 @media(max-width:1023px){.sidebar{width:200px;}.main-content{margin-left:200px;}}
 @media(max-width:767px){.sidebar{width:180px;}.main-content{margin-left:180px;}.sidebar a{font-size:14px;padding:12px 15px;}}
-@media(max-width:599px){body{flex-direction:column;}.sidebar{position:fixed;left:-250px;top:0;height:100%;width:250px;}.sidebar.active{left:0;}.hamburger{display:block;}.main-content{margin-left:0;padding:15px;}.header h1{font-size:18px;}.table-wrapper{overflow-x:auto;  .btn-edit, .btn-delete {
-        font-size: 12px;
-        padding: 5px 10px;
-        margin-bottom: 5px;
-    }  }}
+@media(max-width:599px){
+    body{flex-direction:column;}
+    .sidebar{position:fixed;left:-250px;top:0;height:100%;width:250px;}
+    .sidebar.active{left:0;}
+    .hamburger{display:block;}
+    .main-content{margin-left:0;padding:15px;}
+    .header h1{font-size:18px;}
+    .table-wrapper{overflow-x:auto;}
+    .btn-edit, .btn-delete, .btn-toggle{ font-size: 12px; padding: 5px 10px; margin-bottom: 5px; }
+}
 </style>
 </head>
 <body>
@@ -122,7 +156,7 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 <h2>Admin Panel</h2>
 <a href="admin_dashboard.php">🏠 Dashboard</a>
 <a href="manage_users.php">👤 Manage Users</a>
-<a href="manage_students.php">🎓 Manage Students</a>
+<a href="manage_student.php">🎓 Manage Students</a>
 <a href="manage_course.php">📚 Courses</a>
 <a href="reports.php">📊 Reports</a>
 <a href="settings.php">⚙️ Settings</a>
@@ -137,6 +171,12 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 
 <div class="content">
 <h2>Manage Faculty</h2>
+
+<form method="get" style="margin-bottom:10px;">
+<input type="text" name="search" placeholder="Search by Name or Department" value="<?php echo htmlspecialchars($search); ?>" style="padding:6px;width:250px;border-radius:4px;border:1px solid #ccc;">
+<button type="submit" class="btn btn-add">Search</button>
+</form>
+
 <button class="btn btn-add" onclick="document.getElementById('addModal').style.display='flex'">➕ Add Faculty</button>
 
 <div class="table-wrapper">
@@ -159,13 +199,22 @@ body{display:flex;min-height:100vh;background:#f5f7fa;}
 <td><?php echo $row['status']; ?></td>
 <td>
 <button class="btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($row)); ?>)">✏️ Edit</button>
-<a href="delete_faculty.php?id=<?php echo $row['id']; ?>" class="btn-delete" onclick="return confirm('Are you sure?')">🗑️ Delete</a>
+<a href="manage_faculty.php?toggle_status=<?php echo $row['id']; ?>" class="btn-toggle"><?php echo ($row['status']=='Active')?'Deactivate':'Activate'; ?></a>
+<a href="delete_faculty.php?id=<?php echo $row['id']; ?>" class="btn-delete" onclick="return confirm('Are you sure you want to delete this faculty?')">🗑️ Delete</a>
 </td>
 </tr>
 <?php } ?>
 </tbody>
 </table>
 </div>
+
+<!-- Pagination -->
+<div style="margin-top:10px;">
+<?php for($i=1;$i<=$totalPages;$i++){ ?>
+<a href="?page=<?php echo $i; if($search) echo '&search='.$search;?>" class="btn btn-add" style="padding:4px 8px;margin-right:3px;"><?php echo $i;?></a>
+<?php } ?>
+</div>
+
 </div>
 </div>
 
